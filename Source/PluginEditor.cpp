@@ -186,19 +186,27 @@ namespace
             rootLabel.setColour (juce::Label::textColourId, C::dim);
             addAndMakeVisible (rootLabel);
 
-            acidRoot.setSliderStyle (juce::Slider::IncDecButtons);
-            acidRoot.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 52, 22);
-            acidRoot.setIncDecButtonsMode (juce::Slider::incDecButtonsNotDraggable);
-            acidRoot.textFromValueFunction = [] (double v)
-            {
-                return juce::MidiMessage::getMidiNoteName ((int) v, true, true, 3);
-            };
-            acidRoot.setColour (juce::Slider::textBoxTextColourId, C::text);
-            acidRoot.setColour (juce::Slider::textBoxBackgroundColourId, C::panel);
-            acidRoot.setColour (juce::Slider::textBoxOutlineColourId, C::border);
+            acidRoot.addItemList (AnomalProcessor::acidNoteNames(), 1);
+            acidRoot.setColour (juce::ComboBox::textColourId, C::text);
+            acidRoot.setColour (juce::ComboBox::backgroundColourId, C::panel);
+            acidRoot.setColour (juce::ComboBox::outlineColourId, C::border);
+            acidRoot.setColour (juce::ComboBox::arrowColourId, C::dim);
             addAndMakeVisible (acidRoot);
-            acidRootAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+            acidRootAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
                 proc.apvts, "acidRoot", acidRoot);
+
+            fxDrive.setButtonText ("CYBERDRIVE ON");
+            fxComp.setButtonText ("I HEART NY ON");
+            for (auto* b : { &fxDrive, &fxComp })
+            {
+                b->setColour (juce::ToggleButton::textColourId, C::text);
+                b->setColour (juce::ToggleButton::tickColourId, C::green);
+                addAndMakeVisible (*b);
+            }
+            fxDriveAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+                proc.apvts, "fxDrive", fxDrive);
+            fxCompAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+                proc.apvts, "fxComp", fxComp);
 
             masterLabel.setText ("MASTER", juce::dontSendNotification);
             masterLabel.setFont (mono (11.0f));
@@ -255,7 +263,11 @@ namespace
             scopeRect = right.removeFromTop (230);
             right.removeFromTop (14);
             meterRect = right.removeFromTop (64);
-            right.removeFromTop (14);
+            right.removeFromTop (8);
+            auto fxRow = right.removeFromTop (28);
+            fxDrive.setBounds (fxRow.removeFromLeft (fxRow.getWidth() / 2));
+            fxComp.setBounds (fxRow);
+            right.removeFromTop (8);
             logRect = right.removeFromTop (juce::jmin (150, right.getHeight()));
             tempoRect = juce::Rectangle<int> (area.getX(), getHeight() - 30, 260, 22);
 
@@ -371,9 +383,13 @@ namespace
 
         juce::ToggleButton acidAuto;
         juce::Label rootLabel, masterLabel;
-        juce::Slider acidRoot, master;
+        juce::Slider master;
+        juce::ComboBox acidRoot;
+        juce::ToggleButton fxDrive, fxComp;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> acidAutoAtt;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> acidRootAtt, masterAtt;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> masterAtt;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> acidRootAtt;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> fxDriveAtt, fxCompAtt;
     };
 }
 

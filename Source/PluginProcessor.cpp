@@ -58,6 +58,14 @@ namespace
     }
 }
 
+juce::StringArray AnomalProcessor::acidNoteNames()
+{
+    juce::StringArray n;
+    for (int i = 24; i <= 96; ++i)
+        n.add (juce::MidiMessage::getMidiNoteName (i, true, true, 3));
+    return n;
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout AnomalProcessor::createLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
@@ -70,8 +78,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout AnomalProcessor::createLayou
 
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "acidAuto", 1 }, "Acid Follows Play", true));
-    layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { "acidRoot", 1 }, "Acid Root Note", 0, 127, 60));
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "acidRoot", 1 }, "Acid Root Note", acidNoteNames(), 36));
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "fxDrive", 1 }, "Cyberdrive On", true));
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "fxComp", 1 }, "I Heart NY On", true));
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "master", 1 }, "Master",
         juce::NormalisableRange<float> (-24.0f, 6.0f, 0.1f), -3.0f));
@@ -100,6 +112,8 @@ AnomalProcessor::AnomalProcessor()
     acidAutoRaw = apvts.getRawParameterValue ("acidAuto");
     acidRootRaw = apvts.getRawParameterValue ("acidRoot");
     masterRaw = apvts.getRawParameterValue ("master");
+    fxDriveRaw = apvts.getRawParameterValue ("fxDrive");
+    fxCompRaw = apvts.getRawParameterValue ("fxComp");
 
     mixBuf.setSize (2, 512);
     tmpBuf.setSize (32, 512);
@@ -590,7 +604,7 @@ void AnomalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 playing = pos->getIsPlaying();
 
         const bool autoOn = acidAutoRaw->load() > 0.5f && route != 2;
-        const int root = juce::jlimit (0, 127, (int) acidRootRaw->load());
+        const int root = juce::jlimit (24, 96, 24 + (int) acidRootRaw->load());
 
         if (autoOn && playing && ! acidNoteHeld)
         {
@@ -664,8 +678,8 @@ void AnomalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     runInstrument (SlotDrum, drumMidi);
     runInstrument (SlotAcid, acidMidi);
-    runEffect (SlotDrive);
-    runEffect (SlotComp);
+    if (fxDriveRaw->load() > 0.5f) runEffect (SlotDrive);
+    if (fxCompRaw->load() > 0.5f)  runEffect (SlotComp);
 
     // Master seviye + yumuşak sınırlayıcı
     {

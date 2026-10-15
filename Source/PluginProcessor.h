@@ -80,6 +80,7 @@ public:
     static const char* macroTitle (int i);
     static const char* macroSubtitle (int i);
     static const char* slotName (int slot);
+    static juce::StringArray acidNoteNames(); // MIDI 24..96
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -124,6 +125,8 @@ private:
     std::atomic<float>* acidAutoRaw = nullptr;
     std::atomic<float>* acidRootRaw = nullptr;
     std::atomic<float>* masterRaw = nullptr;
+    std::atomic<float>* fxDriveRaw = nullptr;
+    std::atomic<float>* fxCompRaw = nullptr;
     bool acidNoteHeld = false;
     int acidHeldNote = 60;
     bool macrosCustomised = false; // kullanıcı/state haritayı değiştirdiyse varsayılanlar uygulanmaz
