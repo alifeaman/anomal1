@@ -78,7 +78,7 @@ AnomalProcessor::AnomalProcessor()
     routeRaw = apvts.getRawParameterValue ("midiRoute");
 
     mixBuf.setSize (2, 512);
-    tmpBuf.setSize (16, 512);
+    tmpBuf.setSize (32, 512);
 
     if (auto xml = juce::parseXML (getAppDataDir().getChildFile ("plugins.xml")))
         knownPlugins.recreateFromXml (*xml);
@@ -213,6 +213,14 @@ void AnomalProcessor::autoAssignMissingSlots()
 //==============================================================================
 void AnomalProcessor::configureInstance (juce::AudioPluginInstance& inst, int)
 {
+    // Multi-out / sidechain pluginlerde (ör. Drumazon) ek bus'lar tampon sınırını aşar: kapat.
+    for (int i = 1; i < inst.getBusCount (false); ++i)
+        if (auto* b = inst.getBus (false, i))
+            b->enable (false);
+    for (int i = 1; i < inst.getBusCount (true); ++i)
+        if (auto* b = inst.getBus (true, i))
+            b->enable (false);
+
     auto layout = inst.getBusesLayout();
 
     if (inst.getBusCount (false) > 0)
@@ -486,10 +494,11 @@ void AnomalProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     currentSR = sampleRate;
     currentBS = samplesPerBlock;
 
-    mixBuf.setSize (2, samplesPerBlock);
-    tmpBuf.setSize (16, samplesPerBlock);
-
     const juce::ScopedLock sl (lock);
+
+    mixBuf.setSize (2, samplesPerBlock);
+    tmpBuf.setSize (32, samplesPerBlock);
+
     for (auto& s : slots)
         if (s != nullptr)
         {
@@ -512,7 +521,7 @@ void AnomalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     if (n > mixBuf.getNumSamples() || n > tmpBuf.getNumSamples())
     {
         mixBuf.setSize (2, n, false, false, true);
-        tmpBuf.setSize (16, n, false, false, true);
+        tmpBuf.setSize (32, n, false, false, true);
     }
 
     updateMacros();
@@ -564,8 +573,11 @@ void AnomalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         if (outs <= 0)
             return;
 
-        const int ch = juce::jmin (tmpBuf.getNumChannels(),
-                                   juce::jmax (2, juce::jmax (outs, inst->getTotalNumInputChannels())));
+        const int needed = juce::jmax (2, juce::jmax (outs, inst->getTotalNumInputChannels()));
+        if (needed > tmpBuf.getNumChannels())
+            return; // plugin tampondan fazla kanal bekliyor: güvenli tarafta kal, işleme
+
+        const int ch = needed;
         juce::AudioBuffer<float> v (tmpBuf.getArrayOfWritePointers(), ch, n);
         v.clear();
         inst->processBlock (v, m);
@@ -584,7 +596,11 @@ void AnomalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
         const int outs = inst->getTotalNumOutputChannels();
         const int ins = inst->getTotalNumInputChannels();
-        const int ch = juce::jmin (tmpBuf.getNumChannels(), juce::jmax (2, juce::jmax (outs, ins)));
+        const int needed = juce::jmax (2, juce::jmax (outs, ins));
+        if (needed > tmpBuf.getNumChannels())
+            return;
+
+        const int ch = needed;
 
         juce::AudioBuffer<float> v (tmpBuf.getArrayOfWritePointers(), ch, n);
         v.clear();
