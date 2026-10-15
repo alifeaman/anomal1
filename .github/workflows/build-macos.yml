@@ -1,0 +1,30 @@
+name: build-macos
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DANOMAL_COPY_AFTER_BUILD=FALSE
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Package
+        run: |
+          mkdir dist
+          find build -name "*.vst3" -maxdepth 4 -exec cp -R {} dist/ \;
+          find build -name "*.component" -maxdepth 4 -exec cp -R {} dist/ \;
+          for b in dist/*; do codesign --force --deep -s - "$b"; done
+          ditto -c -k --keepParent dist ANOMAL-01-macos-arm64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANOMAL-01-macos-arm64
+          path: ANOMAL-01-macos-arm64.zip
