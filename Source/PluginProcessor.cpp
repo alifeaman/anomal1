@@ -63,13 +63,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout AnomalProcessor::createLayou
 }
 
 //==============================================================================
-struct AnomalProcessor::ScanThread : public juce::Thread
-{
-    explicit ScanThread (AnomalProcessor& o) : juce::Thread ("ANOMAL scan"), owner (o) {}
-    void run() override { owner.runScan (*this); }
-    AnomalProcessor& owner;
-};
-
 //==============================================================================
 AnomalProcessor::AnomalProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
@@ -99,70 +92,97 @@ AnomalProcessor::AnomalProcessor()
     });
 }
 
-AnomalProcessor::~AnomalProcessor()
-{
-    if (scanThread != nullptr)
-        scanThread->stopThread (8000);
-}
+AnomalProcessor::~AnomalProcessor() {}
 
 //==============================================================================
-// Tarama
+// Hedefli tarama: yalnızca dört plugin dosyası, ana thread'de.
+// (Tüm klasörü arka planda taramak başka üreticilerin pluginlerini çökertebiliyor.)
 //==============================================================================
-void AnomalProcessor::startScan()
+void AnomalProcessor::scanTargeted()
 {
-    if (scanning.load())
+    juce::AudioPluginFormat* vst3 = nullptr;
+    for (int i = 0; i < formatManager.getNumFormats(); ++i)
+        if (formatManager.getFormat (i)->getName() == "VST3")
+            vst3 = formatManager.getFormat (i);
+
+    if (vst3 == nullptr)
         return;
 
-    if (scanThread != nullptr)
-        scanThread->stopThread (2000);
+    const juce::File roots[] = {
+        juce::File ("/Library/Audio/Plug-Ins/VST3"),
+        juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("Library/Audio/Plug-Ins/VST3")
+    };
 
-    scanning = true;
-    sendChangeMessage();
-
-    scanThread = std::make_unique<ScanThread> (*this);
-    scanThread->startThread();
-}
-
-void AnomalProcessor::runScan (juce::Thread& t)
-{
-    for (int i = 0; i < formatManager.getNumFormats(); ++i)
+    for (auto& root : roots)
     {
-        auto* format = formatManager.getFormat (i);
-
-        // Arka plan thread'inde sadece VST3 taranır (AU taraması mesaj thread'i ister).
-        if (format->getName() != "VST3")
+        if (! root.isDirectory())
             continue;
 
-        juce::PluginDirectoryScanner scanner (knownPlugins, *format,
-                                              format->getDefaultLocationsToSearch(), true,
-                                              getAppDataDir().getChildFile ("scan.deadmans"), false);
-        juce::String name;
-        while (! t.threadShouldExit() && scanner.scanNextFile (true, name))
+        for (auto& bundle : root.findChildFiles (juce::File::findFilesAndDirectories, false, "*.vst3"))
         {
+            const auto fileName = bundle.getFileName().toLowerCase();
+
+            bool wanted = false;
+            for (int s = 0; s < NumSlots; ++s)
+            {
+                juce::PluginDescription probe;
+                probe.name = fileName;
+                if (descMatchesSlot (probe, s))
+                    wanted = true;
+            }
+
+            if (! wanted)
+                continue;
+
+            juce::OwnedArray<juce::PluginDescription> found;
+            vst3->findAllTypesForFile (found, bundle.getFullPathName());
+            for (auto* d : found)
+                knownPlugins.addType (*d);
         }
     }
 
     if (auto xml = knownPlugins.createXml())
         xml->writeTo (getAppDataDir().getChildFile ("plugins.xml"));
+}
 
-    juce::WeakReference<AnomalProcessor> weak (this);
-    juce::MessageManager::callAsync ([weak]
-    {
-        if (weak != nullptr)
-        {
-            weak->scanning = false;
-            weak->autoAssignMissingSlots();
-            weak->sendChangeMessage();
-        }
-    });
+void AnomalProcessor::startScan()
+{
+    if (scanning.load())
+        return;
+
+    scanning = true;
+    sendChangeMessage();
+
+    knownPlugins.clear();
+    scanTargeted();
+    targetedScanDone = true;
+
+    scanning = false;
+    autoAssignMissingSlots();
 }
 
 void AnomalProcessor::autoAssignMissingSlots()
 {
-    if (knownPlugins.getNumTypes() == 0 && ! scanning.load())
+    // Önbellekte eksik varsa (ilk çalıştırma ya da plugin sonradan kurulduysa) bir kez hedefli tara.
+    if (! targetedScanDone)
     {
-        startScan();
-        return;
+        bool allKnown = true;
+        auto types = knownPlugins.getTypes();
+        for (int s = 0; s < NumSlots; ++s)
+        {
+            bool found = false;
+            for (auto& d : types)
+                if (descMatchesSlot (d, s))
+                    found = true;
+            if (! found)
+                allKnown = false;
+        }
+
+        if (! allKnown)
+        {
+            scanTargeted();
+            targetedScanDone = true;
+        }
     }
 
     for (int s = 0; s < NumSlots; ++s)

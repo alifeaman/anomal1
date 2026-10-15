@@ -96,8 +96,6 @@ public:
 
 private:
     //==========================================================================
-    struct ScanThread;
-
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     static juce::File getAppDataDir();
     static bool descMatchesSlot (const juce::PluginDescription& d, int slot);
@@ -108,7 +106,7 @@ private:
     int findParam (int slot, const std::vector<juce::String>& tokens) const;
     void syncMacroFromTarget (int macro);
     void updateMacros();
-    void runScan (juce::Thread& t);
+    void scanTargeted(); // sadece 4 plugin dosyasını bulur, ana thread'de
 
     //==========================================================================
     juce::AudioPluginFormatManager formatManager;
@@ -126,7 +124,7 @@ private:
     bool macrosCustomised = false; // kullanıcı/state haritayı değiştirdiyse varsayılanlar uygulanmaz
 
     std::atomic<bool> scanning { false };
-    std::unique_ptr<ScanThread> scanThread;
+    bool targetedScanDone = false;
 
     double currentSR = 44100.0;
     int currentBS = 512;
