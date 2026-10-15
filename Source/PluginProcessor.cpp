@@ -7,7 +7,7 @@
 const char* AnomalProcessor::macroTitle (int i)
 {
     static const char* t[kNumMacros] = { "KICK SNAP", "ACID CUTOFF", "ACID RESO", "GLUE SPANK",
-                                         "CRUSH DRIVE", "TAPE FLUTTER", "GLITCH JITTER", "OUTPUT CEILING" };
+                                         "CRUSH DRIVE", "TAPE FLUTTER", "ACID SWING", "OUTPUT CEILING" };
     return t[juce::jlimit (0, kNumMacros - 1, i)];
 }
 
@@ -373,7 +373,7 @@ void AnomalProcessor::applyDefaultMacroMapping (int onlySlot)
         { SlotComp,  { { "spank" } } },
         { SlotDrive, { { "dist 1", "drive" }, { "dist1", "drive" }, { "drive" } } },
         { SlotDrive, { { "motion", "rate" }, { "chorus", "rate" }, { "rate" } } },
-        { SlotDrum,  { { "shuffle" } } },
+        { SlotAcid,  { { "swing" } } },
         { SlotComp,  { { "output" } } },
     };
 

@@ -123,14 +123,27 @@ namespace
                 }
 
                 auto& params = inst->getParameters();
-                const int chunk = 40;
-                for (int start = 0; start < params.size(); start += chunk)
+                // Anlamsız "Parameter 83" / "MIDI CC x|y" girdilerini listeden çıkar
+                std::vector<int> valid;
+                for (int i = 0; i < params.size(); ++i)
+                {
+                    const auto n = params[i]->getName (60);
+                    if (n.startsWithIgnoreCase ("Parameter ") || n.startsWithIgnoreCase ("MIDI CC"))
+                        continue;
+                    valid.push_back (i);
+                }
+
+                const int chunk = 30;
+                for (size_t start = 0; start < valid.size(); start += chunk)
                 {
                     juce::PopupMenu sub;
-                    const int end = juce::jmin (start + chunk, params.size());
-                    for (int i = start; i < end; ++i)
+                    const size_t end = juce::jmin (start + chunk, valid.size());
+                    for (size_t k = start; k < end; ++k)
+                    {
+                        const int i = valid[k];
                         sub.addItem (100 + s * 100000 + i, params[i]->getName (60));
-                    slotMenu.addSubMenu (juce::String (start) + " - " + juce::String (end - 1), sub);
+                    }
+                    slotMenu.addSubMenu (params[valid[start]]->getName (24) + "  ...", sub);
                 }
                 menu.addSubMenu (AnomalProcessor::slotName (s), slotMenu);
             }
