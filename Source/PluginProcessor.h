@@ -121,6 +121,11 @@ private:
     std::array<std::atomic<float>*, kNumMacros> macroRaw {};
     std::array<std::atomic<float>, kNumMacros> lastMacro {};
     std::atomic<float>* routeRaw = nullptr;
+    std::atomic<float>* acidAutoRaw = nullptr;
+    std::atomic<float>* acidRootRaw = nullptr;
+    std::atomic<float>* masterRaw = nullptr;
+    bool acidNoteHeld = false;
+    int acidHeldNote = 60;
     bool macrosCustomised = false; // kullanıcı/state haritayı değiştirdiyse varsayılanlar uygulanmaz
 
     std::atomic<bool> scanning { false };

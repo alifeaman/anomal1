@@ -174,6 +174,49 @@ namespace
                 cells[(size_t) i] = std::make_unique<MacroCell> (proc, i, lnf);
                 addAndMakeVisible (*cells[(size_t) i]);
             }
+            acidAuto.setButtonText ("ACID FOLLOWS LIVE PLAY");
+            acidAuto.setColour (juce::ToggleButton::textColourId, C::text);
+            acidAuto.setColour (juce::ToggleButton::tickColourId, C::green);
+            addAndMakeVisible (acidAuto);
+            acidAutoAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+                proc.apvts, "acidAuto", acidAuto);
+
+            rootLabel.setText ("ROOT", juce::dontSendNotification);
+            rootLabel.setFont (mono (11.0f));
+            rootLabel.setColour (juce::Label::textColourId, C::dim);
+            addAndMakeVisible (rootLabel);
+
+            acidRoot.setSliderStyle (juce::Slider::IncDecButtons);
+            acidRoot.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 52, 22);
+            acidRoot.setIncDecButtonsMode (juce::Slider::incDecButtonsNotDraggable);
+            acidRoot.textFromValueFunction = [] (double v)
+            {
+                return juce::MidiMessage::getMidiNoteName ((int) v, true, true, 3);
+            };
+            acidRoot.setColour (juce::Slider::textBoxTextColourId, C::text);
+            acidRoot.setColour (juce::Slider::textBoxBackgroundColourId, C::panel);
+            acidRoot.setColour (juce::Slider::textBoxOutlineColourId, C::border);
+            addAndMakeVisible (acidRoot);
+            acidRootAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+                proc.apvts, "acidRoot", acidRoot);
+
+            masterLabel.setText ("MASTER", juce::dontSendNotification);
+            masterLabel.setFont (mono (11.0f));
+            masterLabel.setColour (juce::Label::textColourId, C::dim);
+            addAndMakeVisible (masterLabel);
+
+            master.setSliderStyle (juce::Slider::LinearHorizontal);
+            master.setTextBoxStyle (juce::Slider::TextBoxRight, false, 62, 22);
+            master.setTextValueSuffix (" dB");
+            master.setColour (juce::Slider::textBoxTextColourId, C::text);
+            master.setColour (juce::Slider::textBoxBackgroundColourId, C::panel);
+            master.setColour (juce::Slider::textBoxOutlineColourId, C::border);
+            master.setColour (juce::Slider::trackColourId, C::green.withAlpha (0.5f));
+            master.setColour (juce::Slider::thumbColourId, juce::Colour (0xffd8dbe0));
+            addAndMakeVisible (master);
+            masterAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+                proc.apvts, "master", master);
+
             proc.addChangeListener (this);
             startTimerHz (30);
         }
@@ -214,7 +257,16 @@ namespace
             meterRect = right.removeFromTop (64);
             right.removeFromTop (14);
             logRect = right.removeFromTop (juce::jmin (150, right.getHeight()));
-            tempoRect = juce::Rectangle<int> (area.getX(), getHeight() - 26, 400, 20);
+            tempoRect = juce::Rectangle<int> (area.getX(), getHeight() - 30, 260, 22);
+
+            int x = tempoRect.getRight() + 14;
+            acidAuto.setBounds (x, getHeight() - 32, 210, 24);
+            x += 220;
+            rootLabel.setBounds (x, getHeight() - 32, 40, 24);
+            acidRoot.setBounds (x + 42, getHeight() - 32, 110, 24);
+            x += 168;
+            masterLabel.setBounds (x, getHeight() - 32, 60, 24);
+            master.setBounds (x + 62, getHeight() - 32, 200, 24);
         }
 
         void paint (juce::Graphics& g) override
@@ -307,8 +359,7 @@ namespace
             const double bpm = proc.currentBpm.load();
             g.setColour (C::dim);
             g.setFont (mono (11.0f));
-            g.drawText ("TEMPO: " + (bpm > 0.0 ? juce::String (bpm, 1) + " BPM" : juce::String ("--"))
-                            + "     ROUTE: right-click macro = map",
+            g.drawText ("TEMPO: " + (bpm > 0.0 ? juce::String (bpm, 1) + " BPM" : juce::String ("--")),
                         tempoRect, juce::Justification::left);
         }
 
@@ -317,6 +368,12 @@ namespace
         DeckLnF lnf;
         std::array<std::unique_ptr<MacroCell>, kNumMacros> cells;
         juce::Rectangle<int> scopeRect, meterRect, logRect, tempoRect;
+
+        juce::ToggleButton acidAuto;
+        juce::Label rootLabel, masterLabel;
+        juce::Slider acidRoot, master;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> acidAutoAtt;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> acidRootAtt, masterAtt;
     };
 }
 
@@ -440,14 +497,14 @@ void AnomalEditor::resized()
     for (size_t i = 0; i < tabButtons.size(); ++i)
     {
         const int w = i == 0 ? 70 : (i == 3 ? 100 : 92);
-        tabButtons[i].setBounds (x, 18, w, 28);
+        tabButtons[i].setBounds (x, 34, w, 26);
         x += w + 6;
     }
 
     // Sağ üst: kontrol butonları
-    paramsButton.setBounds (getWidth() - 90, 6, 80, 22);
-    scanButton.setBounds (getWidth() - 176, 6, 80, 22);
-    routeBox.setBounds (getWidth() - 400, 6, 218, 22);
+    paramsButton.setBounds (getWidth() - 90, 6, 80, 24);
+    scanButton.setBounds (getWidth() - 176, 6, 80, 24);
+    routeBox.setBounds (getWidth() - 440, 6, 252, 24);
 
     const auto content = contentArea();
     deck->setBounds (content);

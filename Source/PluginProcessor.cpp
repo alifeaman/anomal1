@@ -45,6 +45,19 @@ bool AnomalProcessor::descMatchesSlot (const juce::PluginDescription& d, int slo
     }
 }
 
+namespace
+{
+    // 0.8'e kadar doğrusal, üstünde yumuşakça 1.0'a sıkıştırır.
+    inline float softLimit (float x)
+    {
+        const float a = std::abs (x);
+        if (a <= 0.8f)
+            return x;
+        const float y = 0.8f + 0.2f * std::tanh ((a - 0.8f) / 0.2f);
+        return x < 0.0f ? -y : y;
+    }
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout AnomalProcessor::createLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
@@ -54,6 +67,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout AnomalProcessor::createLayou
             juce::ParameterID { "macro" + juce::String (i), 1 },
             juce::String ("Macro ") + juce::String (i + 1) + " " + macroTitle (i),
             juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "acidAuto", 1 }, "Acid Follows Play", true));
+    layout.add (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "acidRoot", 1 }, "Acid Root Note", 0, 127, 60));
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "master", 1 }, "Master",
+        juce::NormalisableRange<float> (-24.0f, 6.0f, 0.1f), -3.0f));
 
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "midiRoute", 1 }, "MIDI Route",
@@ -76,6 +97,9 @@ AnomalProcessor::AnomalProcessor()
         lastMacro[(size_t) i].store (-1.0f);
     }
     routeRaw = apvts.getRawParameterValue ("midiRoute");
+    acidAutoRaw = apvts.getRawParameterValue ("acidAuto");
+    acidRootRaw = apvts.getRawParameterValue ("acidRoot");
+    masterRaw = apvts.getRawParameterValue ("master");
 
     mixBuf.setSize (2, 512);
     tmpBuf.setSize (32, 512);
@@ -558,6 +582,29 @@ void AnomalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         if (toAcid) acidMidi.addEvent (msg, meta.samplePosition);
     }
 
+    // Acid V: sequencer'ı nota tetikliyor. Live Play'e basınca nota gönder, Stop'ta bırak.
+    {
+        bool playing = false;
+        if (auto* ph = getPlayHead())
+            if (auto pos = ph->getPosition())
+                playing = pos->getIsPlaying();
+
+        const bool autoOn = acidAutoRaw->load() > 0.5f && route != 2;
+        const int root = juce::jlimit (0, 127, (int) acidRootRaw->load());
+
+        if (autoOn && playing && ! acidNoteHeld)
+        {
+            acidMidi.addEvent (juce::MidiMessage::noteOn (1, root, (juce::uint8) 100), 0);
+            acidNoteHeld = true;
+            acidHeldNote = root;
+        }
+        else if (acidNoteHeld && (! playing || ! autoOn))
+        {
+            acidMidi.addEvent (juce::MidiMessage::noteOff (1, acidHeldNote), 0);
+            acidNoteHeld = false;
+        }
+    }
+
     juce::AudioBuffer<float> mix (mixBuf.getArrayOfWritePointers(), 2, n);
     mix.clear();
 
@@ -619,6 +666,17 @@ void AnomalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     runInstrument (SlotAcid, acidMidi);
     runEffect (SlotDrive);
     runEffect (SlotComp);
+
+    // Master seviye + yumuşak sınırlayıcı
+    {
+        const float g = juce::Decibels::decibelsToGain (masterRaw->load());
+        for (int c = 0; c < 2; ++c)
+        {
+            auto* d = mix.getWritePointer (c);
+            for (int i = 0; i < n; ++i)
+                d[i] = softLimit (d[i] * g);
+        }
+    }
 
     const int outCh = juce::jmin (2, buffer.getNumChannels());
     for (int c = 0; c < outCh; ++c)
