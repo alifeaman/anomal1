@@ -127,6 +127,17 @@ private:
     std::atomic<float>* masterRaw = nullptr;
     std::atomic<float>* fxDriveRaw = nullptr;
     std::atomic<float>* fxCompRaw = nullptr;
+    std::atomic<float>* bpmFollowRaw = nullptr;
+    std::atomic<float>* bpmRaw = nullptr;
+
+    // Barındırılan pluginlere verilen (tempo'su değiştirilmiş) transport bilgisi
+    struct OverrideHead : public juce::AudioPlayHead
+    {
+        juce::Optional<PositionInfo> getPosition() const override { return info; }
+        PositionInfo info;
+    };
+    OverrideHead overrideHead;
+    double ownPpq = 0.0;
     bool acidNoteHeld = false;
     int acidHeldNote = 60;
     bool macrosCustomised = false; // kullanıcı/state haritayı değiştirdiyse varsayılanlar uygulanmaz

@@ -14,7 +14,7 @@ const char* AnomalProcessor::macroTitle (int i)
 const char* AnomalProcessor::macroSubtitle (int i)
 {
     static const char* t[kNumMacros] = { "DRUMAZON", "ACID V", "ACID V", "I HEART NY",
-                                         "CYBERDRIVE", "CYBERDRIVE", "DRUMAZON", "I HEART NY" };
+                                         "CYBERDRIVE", "CYBERDRIVE", "ACID V", "I HEART NY" };
     return t[juce::jlimit (0, kNumMacros - 1, i)];
 }
 
@@ -81,6 +81,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout AnomalProcessor::createLayou
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "acidRoot", 1 }, "Acid Root Note", acidNoteNames(), 36));
     layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "bpmFollow", 1 }, "Tempo Follows Live", true));
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "bpm", 1 }, "Tempo",
+        juce::NormalisableRange<float> (40.0f, 240.0f, 0.1f), 120.0f));
+    layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "fxDrive", 1 }, "Cyberdrive On", true));
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "fxComp", 1 }, "I Heart NY On", true));
@@ -114,6 +119,8 @@ AnomalProcessor::AnomalProcessor()
     masterRaw = apvts.getRawParameterValue ("master");
     fxDriveRaw = apvts.getRawParameterValue ("fxDrive");
     fxCompRaw = apvts.getRawParameterValue ("fxComp");
+    bpmFollowRaw = apvts.getRawParameterValue ("bpmFollow");
+    bpmRaw = apvts.getRawParameterValue ("bpm");
 
     mixBuf.setSize (2, 512);
     tmpBuf.setSize (32, 512);
@@ -328,6 +335,12 @@ void AnomalProcessor::loadSlot (int slot, const juce::PluginDescription& desc)
 
                 if (p.macrosCustomised)
                     p.lastMacro[(size_t) m].store (p.macroRaw[(size_t) m]->load());
+                else if (m == 6) // ACID SWING: %50'de başla, hedefi ilk hareketinde etkile
+                {
+                    p.lastMacro[(size_t) m].store (0.5f);
+                    if (auto* prm = p.apvts.getParameter ("macro6"))
+                        prm->setValueNotifyingHost (0.5f);
+                }
                 else
                     p.syncMacroFromTarget (m);
             }
@@ -564,11 +577,40 @@ void AnomalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     updateMacros();
 
-    // Transport bilgisi
-    if (auto* ph = getPlayHead())
-        if (auto pos = ph->getPosition())
-            if (auto bpm = pos->getBpm())
-                currentBpm.store (*bpm);
+    // Transport / tempo: Live'ı takip et ya da kendi BPM'imizi kullan
+    juce::AudioPlayHead* activeHead = getPlayHead();
+    {
+        juce::AudioPlayHead::PositionInfo hostInfo;
+        if (auto* ph = getPlayHead())
+            if (auto pos = ph->getPosition())
+                hostInfo = *pos;
+
+        const double hostBpm = hostInfo.getBpm().orFallback (0.0);
+        const bool follow = bpmFollowRaw->load() > 0.5f;
+        const double useBpm = follow ? hostBpm : (double) bpmRaw->load();
+        currentBpm.store (useBpm);
+
+        if (! follow)
+        {
+            const bool hostPlaying = hostInfo.getIsPlaying();
+            if (! hostPlaying)
+                ownPpq = hostInfo.getPpqPosition().orFallback (0.0);
+
+            auto info = hostInfo;
+            info.setBpm (useBpm);
+            info.setPpqPosition (ownPpq);
+
+            const auto sig = hostInfo.getTimeSignature().orFallback (juce::AudioPlayHead::TimeSignature());
+            const double barLen = juce::jmax (0.25, 4.0 * (double) sig.numerator / (double) juce::jmax (1, sig.denominator));
+            info.setPpqPositionOfLastBarStart (std::floor (ownPpq / barLen) * barLen);
+
+            overrideHead.info = info;
+            activeHead = &overrideHead;
+
+            if (hostPlaying)
+                ownPpq += (double) n / currentSR * useBpm / 60.0;
+        }
+    }
 
     // MIDI yönlendirme
     drumMidi.clear();
@@ -628,7 +670,7 @@ void AnomalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         if (inst == nullptr)
             return;
 
-        inst->setPlayHead (getPlayHead());
+        inst->setPlayHead (activeHead);
 
         const int outs = inst->getTotalNumOutputChannels();
         if (outs <= 0)
@@ -653,7 +695,7 @@ void AnomalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         if (inst == nullptr)
             return;
 
-        inst->setPlayHead (getPlayHead());
+        inst->setPlayHead (activeHead);
 
         const int outs = inst->getTotalNumOutputChannels();
         const int ins = inst->getTotalNumInputChannels();

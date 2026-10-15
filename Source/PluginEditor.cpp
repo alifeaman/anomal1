@@ -216,6 +216,25 @@ namespace
                 b->setColour (juce::ToggleButton::tickColourId, C::green);
                 addAndMakeVisible (*b);
             }
+            tempoFollow.setButtonText ("TEMPO FOLLOWS LIVE");
+            tempoFollow.setColour (juce::ToggleButton::textColourId, C::text);
+            tempoFollow.setColour (juce::ToggleButton::tickColourId, C::green);
+            addAndMakeVisible (tempoFollow);
+            tempoFollowAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+                proc.apvts, "bpmFollow", tempoFollow);
+
+            bpmSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+            bpmSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 78, 22);
+            bpmSlider.setTextValueSuffix (" BPM");
+            bpmSlider.setColour (juce::Slider::textBoxTextColourId, C::text);
+            bpmSlider.setColour (juce::Slider::textBoxBackgroundColourId, C::panel);
+            bpmSlider.setColour (juce::Slider::textBoxOutlineColourId, C::border);
+            bpmSlider.setColour (juce::Slider::trackColourId, C::orange.withAlpha (0.5f));
+            bpmSlider.setColour (juce::Slider::thumbColourId, juce::Colour (0xffd8dbe0));
+            addAndMakeVisible (bpmSlider);
+            bpmAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+                proc.apvts, "bpm", bpmSlider);
+
             fxDriveAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
                 proc.apvts, "fxDrive", fxDrive);
             fxCompAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
@@ -250,7 +269,11 @@ namespace
         }
 
         void changeListenerCallback (juce::ChangeBroadcaster*) override { repaint(); }
-        void timerCallback() override { repaint (scopeRect.getUnion (meterRect).getUnion (tempoRect).expanded (2)); }
+        void timerCallback() override
+        {
+            bpmSlider.setEnabled (! tempoFollow.getToggleState());
+            repaint (scopeRect.getUnion (meterRect).getUnion (tempoRect).expanded (2));
+        }
 
         void resized() override
         {
@@ -273,7 +296,7 @@ namespace
 
             // Sağ: scope, metre, log
             right.removeFromTop (34);
-            scopeRect = right.removeFromTop (230);
+            scopeRect = right.removeFromTop (190);
             right.removeFromTop (14);
             meterRect = right.removeFromTop (64);
             right.removeFromTop (8);
@@ -281,7 +304,11 @@ namespace
             fxDrive.setBounds (fxRow.removeFromLeft (fxRow.getWidth() / 2));
             fxComp.setBounds (fxRow);
             right.removeFromTop (8);
-            logRect = right.removeFromTop (juce::jmin (150, right.getHeight()));
+            auto tRow = right.removeFromTop (28);
+            tempoFollow.setBounds (tRow.removeFromLeft (190));
+            bpmSlider.setBounds (tRow);
+            right.removeFromTop (8);
+            logRect = right.removeFromTop (juce::jmin (130, right.getHeight()));
             tempoRect = juce::Rectangle<int> (area.getX(), getHeight() - 30, 260, 22);
 
             int x = tempoRect.getRight() + 14;
@@ -398,7 +425,10 @@ namespace
         juce::Label rootLabel, masterLabel;
         juce::Slider master;
         juce::ComboBox acidRoot;
-        juce::ToggleButton fxDrive, fxComp;
+        juce::ToggleButton fxDrive, fxComp, tempoFollow;
+        juce::Slider bpmSlider;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> tempoFollowAtt;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bpmAtt;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> acidAutoAtt;
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> masterAtt;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> acidRootAtt;
